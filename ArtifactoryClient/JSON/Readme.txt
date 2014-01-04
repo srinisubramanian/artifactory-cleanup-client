@@ -1,0 +1,1 @@
+Download the JSON.net DLL - Newtonsoft.Json.dll, copy it to this folder and if requried add a reference
