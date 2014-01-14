@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Net;
 using System.IO;
+using System.Threading;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 
@@ -29,6 +30,9 @@ namespace ArtifactoryClient
 
         private void ArtifactList_Load(object sender, EventArgs e)
         {
+            backgroundWorker1.WorkerReportsProgress = true;
+            backgroundWorker1.WorkerSupportsCancellation = true;
+
             // Set the view to show details.
             listView1.View = View.Details;
 
@@ -58,54 +62,34 @@ namespace ArtifactoryClient
 
         private void button1_Click(object sender, EventArgs e)
         {
-            if (MessageBox.Show("Delete selected artifacts?", "", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-            {
-                Cursor.Current = Cursors.WaitCursor;
-
-                // Get all checked items and delete
-                String artifact = "";
-                try
-                {
-                    var removedItems = new List<ListViewItem>();
-                    foreach (ListViewItem item in listView1.Items)
-                    {
-                        if (item.Checked)
-                        {
-                            artifact = item.SubItems[1].Text;
-                            Uri URL = new Uri(artifact);
-                            WebClient clt = new WebClient();
-                            clt.Credentials = new NetworkCredential(AuthUser, AuthPwd);
-                            String json = clt.UploadString(URL, "DELETE", "");
-                            removedItems.Add(item);
-                        }
-                    }
-
-                    // Now refresh the screen
-                    listView1.BeginUpdate();
-                    foreach (ListViewItem item in removedItems)
-                        listView1.Items.Remove(item);
-                    listView1.EndUpdate();
-
-                }
-                catch (WebException ex)
-                {
-                    MessageBox.Show(ex.Message, "Error deleting " + artifact, MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
-                finally
-                {
-                    Cursor.Current = Cursors.Default;
-                }
-
-            }
-            else
+            if (listView1.CheckedItems.Count <= 0)
             {
                 MessageBox.Show("Select at least 1 artifact to delete", "", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
             }
-        }
 
-        private void button2_Click(object sender, EventArgs e)
-        {
-            Close();
+            if (MessageBox.Show("Delete " + listView1.CheckedItems.Count + " checked artifacts?", "", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+            {
+                if (backgroundWorker1.IsBusy != true)
+                {
+                    var checkedItems = new List<Uri>();
+                    foreach (ListViewItem item in listView1.CheckedItems)
+                    {
+                        {
+                            checkedItems.Add(new Uri(item.SubItems[1].Text));
+                        }
+                    }
+                    this.label1.Text = "Starting";
+                    this.button1.Enabled = false;
+                    //this.button2.Enabled = false;
+                    button2.Text = "Cancel";
+                    this.button3.Enabled = false;
+                    this.button4.Enabled = false;
+
+                    // Start the asynchronous operation.
+                    backgroundWorker1.RunWorkerAsync(new object [] {checkedItems});
+                }
+            }
         }
 
         private void ResizeColumnHeaders()
@@ -121,9 +105,116 @@ namespace ArtifactoryClient
             ResizeColumnHeaders();
         }
 
-        private void listView1_SelectedIndexChanged(object sender, EventArgs e)
-        {
 
+        private void button4_Click(object sender, EventArgs e)
+        {
+            listView1.BeginUpdate();
+            bool bSelect = (button4.Text.Equals("Select All"));
+            foreach (ListViewItem item in listView1.Items)
+            {
+                item.Checked = bSelect;
+            }
+            listView1.EndUpdate();
+            button4.Text = bSelect ? "Deselect All" : "Select All";
+        }
+
+        private void button3_Click(object sender, EventArgs e)
+        {
+            listView1.BeginUpdate();
+            foreach (ListViewItem item in listView1.Items)
+            {
+                item.Checked = !item.Checked;
+            }
+            listView1.EndUpdate();
+        }
+
+        private void backgroundWorker1_DoWork(object sender, DoWorkEventArgs e)
+        {
+            // Get all checked items and delete
+            object[] parameters = e.Argument as object[];
+            List<Uri> checkedItems = parameters[0] as List<Uri>;
+
+            // Get all checked items and delete
+            try
+            {
+                BackgroundWorker worker = sender as BackgroundWorker;
+
+                int done = 0;
+                int total = checkedItems.Count;
+                foreach (Uri url in checkedItems)
+                {
+                    {
+                        WebClient clt = new WebClient();
+                        clt.Credentials = new NetworkCredential(AuthUser, AuthPwd);
+                        String json = clt.UploadString(url, "DELETE", "");
+                        done++;
+                        worker.ReportProgress(100 * done / total);
+
+                        if ((worker.CancellationPending == true))
+                        {
+                            e.Cancel = true;
+                            break;
+                        }
+                    }
+                }
+
+            }
+            catch (WebException ex)
+            {
+                Console.WriteLine("Error deleting: " + ex.Message);
+            }
+            finally
+            {
+            }
+        }
+
+
+        private void backgroundWorker1_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+        {
+            // Refresh the UI
+            if (!e.Cancelled)
+            {
+                this.label1.Text = "Completed";
+                this.button1.Enabled = true;
+                this.button3.Enabled = true;
+                this.button4.Enabled = true;
+
+                listView1.BeginUpdate();
+                foreach (ListViewItem item in listView1.CheckedItems)
+                {
+                    {
+                        listView1.Items.Remove(item);
+                    }
+                }
+
+                listView1.EndUpdate();
+            }
+            else
+            {
+                this.label1.Text = "Cancelled";
+            }
+
+            // Enable close always
+            button2.Text = "Close"; 
+            this.button2.Enabled = true;
+        }
+
+        private void backgroundWorker1_ProgressChanged(object sender, ProgressChangedEventArgs e)
+        {
+            this.label1.Text = (e.ProgressPercentage.ToString() + "%");
+        }
+
+        private void button2_Click_1(object sender, EventArgs e)
+        {
+            if (button2.Text.Equals("Close"))
+                Close();
+
+            // Cancel the asynchronous operation. 
+            this.backgroundWorker1.CancelAsync();
+
+            // Disable the Cancel button.
+            button2.Text = "Close";
+            button2.Enabled = false;
         }
     }
 }

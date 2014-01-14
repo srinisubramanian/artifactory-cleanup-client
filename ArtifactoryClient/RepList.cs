@@ -21,6 +21,8 @@ namespace ArtifactoryClient
         public String AuthUser { get; set; }
         public String AuthPwd { get; set; }
 
+        private ProgressBar progress;
+
         public RepList()
         {
             InitializeComponent();
@@ -28,6 +30,11 @@ namespace ArtifactoryClient
 
         private void RepList_Load(object sender, EventArgs e)
         {
+            backgroundWorker1.WorkerReportsProgress = true;
+            backgroundWorker1.WorkerSupportsCancellation = true;
+
+            progress = null;
+
             dateTimePicker1.Format = DateTimePickerFormat.Custom;
             dateTimePicker1.CustomFormat = "dd-MM-yyyy hh:mm:ss tt";
             dateTimePicker1.Value = DateTime.Now;
@@ -132,6 +139,10 @@ namespace ArtifactoryClient
                         MessageBox.Show("No artifacts found for the search", "", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }
                 }
+                else
+                {
+                    MessageBox.Show("Select repository", "", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
             catch (WebException ex)
             {
@@ -151,7 +162,13 @@ namespace ArtifactoryClient
         {
             if (MessageBox.Show("Delete empty folders?", "", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
             {
-                RecursivelyDeleteAllEmptyFolders(listBox1.GetItemText(listBox1.SelectedItem).Trim().Replace("/", String.Empty));
+                if (backgroundWorker1.IsBusy != true)
+                {
+                    progress = new ProgressBar();
+                    backgroundWorker1.RunWorkerAsync(new object[] { listBox1.GetItemText(listBox1.SelectedItem).Trim().Replace("/", String.Empty) });
+                    progress.ShowDialog();
+                    progress = null;
+                }
             }
         }
 
@@ -159,8 +176,6 @@ namespace ArtifactoryClient
         {
             try
             {
-                Cursor.Current = Cursors.WaitCursor;
-
                 // Load the virtual repositories
                 Uri URL = new Uri(ArtifactoryURL + Constants.StorageURL + repository);
                 WebClient clt = new WebClient();
@@ -187,15 +202,31 @@ namespace ArtifactoryClient
             {
                 MessageBox.Show(ex.Message, "Error deleting", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
-            finally
-            {
-                Cursor.Current = Cursors.Default;
-            }
         }
 
         private void button4_Click(object sender, EventArgs e)
         {
             Close();
+        }
+
+        private void backgroundWorker1_DoWork(object sender, DoWorkEventArgs e)
+        {
+            object[] parameters = e.Argument as object[];
+            String repository = parameters[0] as String;
+
+            RecursivelyDeleteAllEmptyFolders(repository);
+
+            BackgroundWorker worker = sender as BackgroundWorker;
+            worker.ReportProgress(100);
+        }
+
+        private void backgroundWorker1_ProgressChanged(object sender, ProgressChangedEventArgs e)
+        {
+        }
+
+        private void backgroundWorker1_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+        {
+            progress.Close();
         }
 
     }
